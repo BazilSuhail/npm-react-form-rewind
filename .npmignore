@@ -1,0 +1,10 @@
+src/
+tests/
+tsconfig.json
+tsup.config.ts
+.git/
+.github/
+.gitignore
+*.tgz
+coverage/
+node_modules/
