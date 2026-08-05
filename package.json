@@ -1,6 +1,6 @@
 {
   "name": "react-form-rewind",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Zero-dependency React state engine with auto-saved history stacks, time-traveling undo/redo, keyboard shortcuts, and draft persistence for forms.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -25,6 +25,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
@@ -32,11 +34,15 @@
     "react": ">=18.0.0"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^18.2.0",
+    "jsdom": "^30.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.3.0"
+    "typescript": "^5.3.0",
+    "vitest": "^5.0.0"
   },
   "keywords": [
     "react",
