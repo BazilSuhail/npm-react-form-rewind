@@ -1,13 +1,20 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { HistoryEntry, UseFormHistoryOptions, UseFormHistoryReturn } from "./types";
 
 const DEFAULT_MAX_HISTORY = 100;
+const DEFAULT_DEBOUNCE_MS = 300;
 
 export function useFormHistory<T>(
   initialState: T,
   options: UseFormHistoryOptions<T> = {},
 ): UseFormHistoryReturn<T> {
-  const { maxHistory = DEFAULT_MAX_HISTORY, onUndo, onRedo, onSnapshot } = options;
+  const {
+    maxHistory = DEFAULT_MAX_HISTORY,
+    debounceMs = DEFAULT_DEBOUNCE_MS,
+    onUndo,
+    onRedo,
+    onSnapshot,
+  } = options;
 
   const pastRef = useRef<HistoryEntry<T>[]>([]);
   const futureRef = useRef<HistoryEntry<T>[]>([]);
@@ -18,6 +25,10 @@ export function useFormHistory<T>(
 
   const [past, setPast] = useState<HistoryEntry<T>[]>([]);
   const [future, setFuture] = useState<HistoryEntry<T>[]>([]);
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingStateRef = useRef<T | null>(null);
+  const preDebounceStateRef = useRef<T | null>(null);
 
   const pushToPast = useCallback(
     (entry: HistoryEntry<T>) => {
@@ -31,6 +42,14 @@ export function useFormHistory<T>(
     [maxHistory],
   );
 
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
   const setState = useCallback(
     (value: T | ((prev: T) => T), label?: string) => {
       const prev = stateRef.current;
@@ -38,18 +57,62 @@ export function useFormHistory<T>(
 
       if (Object.is(prev, next)) return;
 
-      const entry: HistoryEntry<T> = { state: prev, timestamp: Date.now(), label };
-
-      pushToPast(entry);
-      futureRef.current = [];
-      setFuture([]);
       setStateRaw(next);
       stateRef.current = next;
+
+      if (debounceMs <= 0) {
+        const entry: HistoryEntry<T> = { state: prev, timestamp: Date.now(), label };
+        pushToPast(entry);
+        futureRef.current = [];
+        setFuture([]);
+        return;
+      }
+
+      if (pendingStateRef.current === null) {
+        preDebounceStateRef.current = prev;
+      }
+
+      pendingStateRef.current = next;
+
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+      }
+
+      debounceTimerRef.current = setTimeout(() => {
+        const entry: HistoryEntry<T> = {
+          state: preDebounceStateRef.current!,
+          timestamp: Date.now(),
+          label,
+        };
+        pushToPast(entry);
+        futureRef.current = [];
+        setFuture([]);
+        debounceTimerRef.current = null;
+        pendingStateRef.current = null;
+        preDebounceStateRef.current = null;
+      }, debounceMs);
     },
-    [pushToPast],
+    [debounceMs, pushToPast],
   );
 
   const undo = useCallback(() => {
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    if (pendingStateRef.current !== null && preDebounceStateRef.current !== null) {
+      const entry: HistoryEntry<T> = {
+        state: preDebounceStateRef.current,
+        timestamp: Date.now(),
+      };
+      pushToPast(entry);
+      futureRef.current = [];
+      setFuture([]);
+      pendingStateRef.current = null;
+      preDebounceStateRef.current = null;
+    }
+
     if (pastRef.current.length === 0) return;
 
     const prev = pastRef.current[pastRef.current.length - 1];
@@ -67,7 +130,7 @@ export function useFormHistory<T>(
     setStateRaw(prev.state);
     stateRef.current = prev.state;
     onUndo?.(prev.state);
-  }, [onUndo]);
+  }, [pushToPast, onUndo]);
 
   const redo = useCallback(() => {
     if (futureRef.current.length === 0) return;
@@ -90,6 +153,12 @@ export function useFormHistory<T>(
   }, [onRedo]);
 
   const clearHistory = useCallback(() => {
+    if (debounceTimerRef.current !== null) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    pendingStateRef.current = null;
+    preDebounceStateRef.current = null;
     pastRef.current = [];
     futureRef.current = [];
     setPast([]);
@@ -98,15 +167,40 @@ export function useFormHistory<T>(
 
   const snapshot = useCallback(
     (label?: string) => {
-      const entry: HistoryEntry<T> = {
-        state: stateRef.current,
-        timestamp: Date.now(),
-        label,
-      };
-      pushToPast(entry);
-      futureRef.current = [];
-      setFuture([]);
-      onSnapshot?.(entry);
+      let didFlush = false;
+
+      if (debounceTimerRef.current !== null) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+
+      if (pendingStateRef.current !== null && preDebounceStateRef.current !== null) {
+        const entry: HistoryEntry<T> = {
+          state: preDebounceStateRef.current,
+          timestamp: Date.now(),
+        };
+        pushToPast(entry);
+        futureRef.current = [];
+        setFuture([]);
+        pendingStateRef.current = null;
+        preDebounceStateRef.current = null;
+        didFlush = true;
+      }
+
+      if (!didFlush) {
+        const entry: HistoryEntry<T> = {
+          state: stateRef.current,
+          timestamp: Date.now(),
+          label,
+        };
+        pushToPast(entry);
+        futureRef.current = [];
+        setFuture([]);
+        onSnapshot?.(entry);
+      } else if (label && pastRef.current.length > 0) {
+        pastRef.current[pastRef.current.length - 1].label = label;
+        setPast([...pastRef.current]);
+      }
     },
     [pushToPast, onSnapshot],
   );
