@@ -1,6 +1,6 @@
 {
   "name": "react-form-rewind",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Zero-dependency React state engine with auto-saved history stacks, time-traveling undo/redo, keyboard shortcuts, and draft persistence for forms.",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
@@ -60,11 +60,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-username/react-form-rewind.git"
+    "url": "https://github.com/BazilSuhail/npm-react-form-rewind.git"
   },
   "bugs": {
-    "url": "https://github.com/your-username/react-form-rewind/issues"
+    "url": "https://github.com/BazilSuhail/npm-react-form-rewind/issues"
   },
-  "homepage": "https://github.com/your-username/react-form-rewind#readme",
+  "homepage": "https://github.com/BazilSuhail/npm-react-form-rewind#readme",
   "license": "MIT"
 }

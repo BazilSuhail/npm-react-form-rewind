@@ -2,16 +2,35 @@
 
 [![npm version](https://img.shields.io/npm/v/react-form-rewind.svg)](https://www.npmjs.com/package/react-form-rewind)
 [![npm downloads](https://img.shields.io/npm/dm/react-form-rewind.svg)](https://www.npmjs.com/package/react-form-rewind)
-[![bundle size](https://img.shields.io/bundlephobia/minzip/react-form-rewind)](https://bundlephobia.com/package/react-form-rewind)
-[![license](https://img.shields.io/npm/l/react-form-rewind.svg)](LICENSE)
-[![react](https://img.shields.io/badge/react-%3E%3D18.0.0-blue.svg)](https://reactjs.org)
-[![typescript](https://img.shields.io/badge/typescript-5.3%2B-3178c6.svg)](https://www.typescriptlang.org/)
+[![license](https://img.shields.io/npm/l/react-form-rewind.svg)](https://github.com/BazilSuhail/npm-react-form-rewind/blob/main/LICENSE)
+[![types](https://img.shields.io/badge/types-typescript-blue.svg)](https://www.typescriptlang.org/)
+[![zero deps](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)]()
+[![tree shakable](https://img.shields.io/badge/tree--shaking-yes-brightgreen.svg)]()
+[![react](https://img.shields.io/badge/react-18%2B-61dafb.svg)](https://react.dev/)
+[![bundle size](https://img.shields.io/bundlejs/size/react-form-rewind?label=min%2Bgzip)](https://bundlejs.com/?q=react-form-rewind)
+[![github](https://img.shields.io/github/stars/BazilSuhail/npm-react-form-rewind?style=social)](https://github.com/BazilSuhail/npm-react-form-rewind)
 
 Zero-dependency, tree-shakable React state engine with auto-saved history stacks, time-traveling undo/redo, keyboard shortcuts, and draft persistence.
 
----
+- **Undo/Redo** — full history stack with `Ctrl+Z` / `Ctrl+Shift+Z` keyboard shortcuts
+- **Snapshot debouncing** — rapid keystrokes coalesced into logical history entries
+- **Draft persistence** — auto-save to `localStorage` with schema versioning
+- **Functional updates** — `setState(prev => prev + 1)` supported
+- **History inspection** — access `past` and `future` arrays for custom UIs
+- **Callbacks** — `onUndo`, `onRedo`, `onSnapshot` hooks
+- Zero-config — no providers, no context, just a hook
+- Tree-shakable — ESM + CJS with `sideEffects: false`
+- TypeScript — full generics, all types exported
 
-## Why?
+## Install
+
+```bash
+npm install react-form-rewind
+```
+
+## Quick Start
+
+### Why?
 
 | Problem | Solution |
 |---------|----------|
@@ -20,7 +39,7 @@ Zero-dependency, tree-shakable React state engine with auto-saved history stacks
 | Manual debouncers for history snapshots | Automated keystroke coalescing into logical snapshots |
 | Heavy form libraries add validation bloat | Focused solely on history and state persistence |
 
-## Quick Start
+## Usage
 
 ```bash
 npm install react-form-rewind
