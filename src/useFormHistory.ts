@@ -13,8 +13,7 @@ interface PersistStorage {
 }
 
 function normalizePersist(persist: boolean | PersistOptions | undefined): PersistStorage | null {
-  if (!persist) return null;
-  if (typeof persist === "boolean") return null;
+  if (!persist || typeof persist === "boolean") return null;
   return {
     key: persist.key,
     debounceMs: persist.debounceMs ?? DEFAULT_PERSIST_DEBOUNCE_MS,
@@ -22,17 +21,21 @@ function normalizePersist(persist: boolean | PersistOptions | undefined): Persis
   };
 }
 
+function hasStorage(): boolean {
+  return typeof window !== "undefined" && !!window.localStorage;
+}
+
 function readDraft<T>(key: string, version: number): T | null {
   try {
-    if (typeof window === "undefined" || !window.localStorage) return null;
+    if (!hasStorage()) return null;
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (parsed.__version !== version) {
+    if (parsed.__v !== version) {
       window.localStorage.removeItem(key);
       return null;
     }
-    return parsed.__state as T;
+    return parsed.__s as T;
   } catch {
     return null;
   }
@@ -40,8 +43,8 @@ function readDraft<T>(key: string, version: number): T | null {
 
 function writeDraft<T>(key: string, state: T, version: number): void {
   try {
-    if (typeof window === "undefined" || !window.localStorage) return;
-    window.localStorage.setItem(key, JSON.stringify({ __state: state, __version: version }));
+    if (!hasStorage()) return;
+    window.localStorage.setItem(key, JSON.stringify({ __s: state, __v: version }));
   } catch {
     // localStorage full or disabled — silently ignore
   }
@@ -49,7 +52,7 @@ function writeDraft<T>(key: string, state: T, version: number): void {
 
 function removeDraft(key: string): void {
   try {
-    if (typeof window === "undefined" || !window.localStorage) return;
+    if (!hasStorage()) return;
     window.localStorage.removeItem(key);
   } catch {
     // silently ignore
@@ -64,22 +67,19 @@ export function useFormHistory<T>(
     maxHistory = DEFAULT_MAX_HISTORY,
     debounceMs = DEFAULT_DEBOUNCE_MS,
     persist: persistOption,
+    keyboard = false,
     onUndo,
     onRedo,
     onSnapshot,
   } = options;
 
   const persist = normalizePersist(persistOption);
-  const initializedRef = useRef(false);
 
   // Hydrate from localStorage on first render
   const [state, setStateRaw] = useState<T>(() => {
     if (persist) {
       const draft = readDraft<T>(persist.key, persist.version);
-      if (draft !== null) {
-        initializedRef.current = true;
-        return draft;
-      }
+      if (draft !== null) return draft;
     }
     return initialState;
   });
@@ -99,6 +99,11 @@ export function useFormHistory<T>(
 
   // Persist debounce timer
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearFuture = useCallback(() => {
+    futureRef.current = [];
+    setFuture([]);
+  }, []);
 
   const pushToPast = useCallback(
     (entry: HistoryEntry<T>) => {
@@ -166,8 +171,7 @@ export function useFormHistory<T>(
       if (debounceMs <= 0) {
         const entry: HistoryEntry<T> = { state: prev, timestamp: Date.now(), label };
         pushToPast(entry);
-        futureRef.current = [];
-        setFuture([]);
+        clearFuture();
         return;
       }
 
@@ -188,14 +192,13 @@ export function useFormHistory<T>(
           label,
         };
         pushToPast(entry);
-        futureRef.current = [];
-        setFuture([]);
+        clearFuture();
         debounceTimerRef.current = null;
         pendingStateRef.current = null;
         preDebounceStateRef.current = null;
       }, debounceMs);
     },
-    [debounceMs, pushToPast, schedulePersist],
+    [debounceMs, pushToPast, schedulePersist, clearFuture],
   );
 
   const undo = useCallback(() => {
@@ -210,8 +213,7 @@ export function useFormHistory<T>(
         timestamp: Date.now(),
       };
       pushToPast(entry);
-      futureRef.current = [];
-      setFuture([]);
+      clearFuture();
       pendingStateRef.current = null;
       preDebounceStateRef.current = null;
     }
@@ -234,7 +236,7 @@ export function useFormHistory<T>(
     stateRef.current = prev.state;
     persistNow(prev.state);
     onUndo?.(prev.state);
-  }, [pushToPast, onUndo, persistNow]);
+  }, [pushToPast, onUndo, persistNow, clearFuture]);
 
   const redo = useCallback(() => {
     if (futureRef.current.length === 0) return;
@@ -256,6 +258,23 @@ export function useFormHistory<T>(
     persistNow(next.state);
     onRedo?.(next.state);
   }, [onRedo, persistNow]);
+
+  // Keyboard shortcuts: Ctrl+Z undo, Ctrl+Shift+Z redo
+  useEffect(() => {
+    if (!keyboard) return;
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod || e.key !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) {
+        redo();
+      } else {
+        undo();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [keyboard, undo, redo]);
 
   const clearHistory = useCallback(() => {
     if (debounceTimerRef.current !== null) {
@@ -285,8 +304,7 @@ export function useFormHistory<T>(
           timestamp: Date.now(),
         };
         pushToPast(entry);
-        futureRef.current = [];
-        setFuture([]);
+        clearFuture();
         pendingStateRef.current = null;
         preDebounceStateRef.current = null;
         didFlush = true;
@@ -299,15 +317,14 @@ export function useFormHistory<T>(
           label,
         };
         pushToPast(entry);
-        futureRef.current = [];
-        setFuture([]);
+        clearFuture();
         onSnapshot?.(entry);
       } else if (label && pastRef.current.length > 0) {
         pastRef.current[pastRef.current.length - 1].label = label;
         setPast([...pastRef.current]);
       }
     },
-    [pushToPast, onSnapshot],
+    [pushToPast, onSnapshot, clearFuture],
   );
 
   const clearDraft = useCallback(() => {

@@ -4,16 +4,11 @@ export interface HistoryEntry<T> {
   label?: string;
 }
 
-export interface HistoryStack<T> {
-  past: HistoryEntry<T>[];
-  present: T;
-  future: HistoryEntry<T>[];
-}
-
 export interface UseFormHistoryOptions<T> {
   maxHistory?: number;
   debounceMs?: number;
   persist?: boolean | PersistOptions;
+  keyboard?: boolean;
   onUndo?: (state: T) => void;
   onRedo?: (state: T) => void;
   onSnapshot?: (entry: HistoryEntry<T>) => void;

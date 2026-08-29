@@ -51,7 +51,7 @@ import { useFormHistory } from "react-form-rewind";
 function MyForm() {
   const { state, setState, undo, redo, canUndo, canRedo } = useFormHistory(
     { name: "", email: "" },
-    { persist: { key: "my-form-draft" } }
+    { keyboard: true, persist: { key: "my-form-draft" } }
   );
 
   return (
@@ -108,6 +108,7 @@ The core hook that manages a history-backed state stack.
 | `maxHistory` | `number` | `100` | Maximum past entries to retain |
 | `debounceMs` | `number` | `300` | Debounce window for rapid state changes |
 | `persist` | `boolean \| PersistOptions` | `false` | Enable draft persistence |
+| `keyboard` | `boolean` | `false` | Enable Ctrl+Z / Ctrl+Shift+Z keyboard shortcuts |
 | `onUndo` | `(state: T) => void` | — | Callback after undo |
 | `onRedo` | `(state: T) => void` | — | Callback after redo |
 | `onSnapshot` | `(entry: HistoryEntry<T>) => void` | — | Callback when a snapshot is committed |
@@ -126,7 +127,7 @@ The core hook that manages a history-backed state stack.
 
 ### Keyboard Shortcuts
 
-Shortcuts are enabled by default. Press **Ctrl+Z** to undo, **Ctrl+Shift+Z** or **Ctrl+Y** to redo. On macOS, **Ctrl** maps to **Cmd** automatically.
+Pass `keyboard: true` to enable built-in shortcuts. Press **Ctrl+Z** to undo, **Ctrl+Shift+Z** or **Ctrl+Y** to redo. On macOS, **Ctrl** maps to **Cmd** automatically.
 
 ### Snapshot Debouncing
 

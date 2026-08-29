@@ -4,10 +4,10 @@ export default defineConfig({
   entry: ["src/index.ts"],
   format: ["cjs", "esm"],
   dts: true,
-  sourcemap: true,
+  sourcemap: false,
   clean: true,
   external: ["react"],
   treeshake: true,
   splitting: false,
-  minify: false,
+  minify: true,
 });
