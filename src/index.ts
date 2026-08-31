@@ -7,6 +7,7 @@ export type {
   FieldRules,
   FieldError,
   FieldMeta,
+  FieldHistory,
   FormRewindContextValue,
 } from "./types";
 export {

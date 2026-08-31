@@ -10,17 +10,11 @@
 [![bundle size](https://img.shields.io/bundlejs/size/react-form-rewind?label=min%2Bgzip)](https://bundlejs.com/?q=react-form-rewind)
 [![github](https://img.shields.io/github/stars/BazilSuhail/npm-react-form-rewind?style=social)](https://github.com/BazilSuhail/npm-react-form-rewind)
 
-Zero-dependency, tree-shakable React state engine with auto-saved history stacks, time-traveling undo/redo, keyboard shortcuts, and draft persistence.
+Zero-dependency, tree-shakable React state engine with **field-level undo/redo**, per-field history stacks, validation, draft persistence, and keyboard shortcuts.
 
-- **Undo/Redo** — full history stack with `Ctrl+Z` / `Ctrl+Shift+Z` keyboard shortcuts
-- **Snapshot debouncing** — rapid keystrokes coalesced into logical history entries
-- **Draft persistence** — auto-save to `localStorage` with schema versioning
-- **Functional updates** — `setState(prev => prev + 1)` supported
-- **History inspection** — access `past` and `future` arrays for custom UIs
-- **Callbacks** — `onUndo`, `onRedo`, `onSnapshot` hooks
-- Zero-config — no providers, no context, just a hook
-- Tree-shakable — ESM + CJS with `sideEffects: false`
-- TypeScript — full generics, all types exported
+Two APIs: a standalone hook for full control, or field components for zero-boilerplate forms.
+
+---
 
 ## Install
 
@@ -28,147 +22,292 @@ Zero-dependency, tree-shakable React state engine with auto-saved history stacks
 npm install react-form-rewind
 ```
 
-## Quick Start
+---
 
-### Why?
+## Two Ways to Use
 
-| Problem | Solution |
-|---------|----------|
-| No native Ctrl+Z / Ctrl+Y in React forms | Built-in keyboard shortcuts with history tracking |
-| User progress lost on tab reload | Auto-save drafts to `localStorage` with schema versioning |
-| Manual debouncers for history snapshots | Automated keystroke coalescing into logical snapshots |
-| Heavy form libraries add validation bloat | Focused solely on history and state persistence |
+### 1. Field Components (recommended for forms)
 
-## Usage
-
-```bash
-npm install react-form-rewind
-```
+Zero boilerplate. Field components handle registration, onChange, validation, and per-field undo/redo automatically.
 
 ```tsx
-import { useFormHistory } from "react-form-rewind";
+import { FormRewind, TextField, NumberField } from "react-form-rewind";
 
-function MyForm() {
-  const { state, setState, undo, redo, canUndo, canRedo } = useFormHistory(
-    { name: "", email: "" },
-    { keyboard: true, persist: { key: "my-form-draft" } }
-  );
-
+function SignupForm() {
   return (
-    <form>
-      <input
-        value={state.name}
-        onChange={(e) => setState({ ...state, name: e.target.value })}
+    <FormRewind
+      initialState={{ name: "", email: "", age: 0 }}
+      keyboard
+      persist={{ key: "signup-draft" }}
+      onSubmit={(data) => console.log(data)}
+    >
+      <TextField name="name" label="Name" rules={{ required: true }} />
+      <TextField
+        name="email"
+        label="Email"
+        rules={{
+          required: true,
+          pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "Invalid email" },
+        }}
       />
-      <input
-        value={state.email}
-        onChange={(e) => setState({ ...state, email: e.target.value })}
-      />
-      <button type="button" onClick={undo} disabled={!canUndo}>
-        Undo
-      </button>
-      <button type="button" onClick={redo} disabled={!canRedo}>
-        Redo
-      </button>
-    </form>
+      <NumberField name="age" label="Age" rules={{ min: 18, max: 120 }} />
+      <button type="submit">Submit</button>
+    </FormRewind>
   );
 }
 ```
 
-Press **Ctrl+Z** to undo, **Ctrl+Shift+Z** or **Ctrl+Y** to redo.
+**What happens:**
+- Click into Name, type "John", press **Ctrl+Z** — only Name undoes, Email stays
+- Type in both fields, submit — validation runs, errors show per field
+- Close tab, reopen — draft restored from localStorage
+
+### 2. Standalone Hook (full control)
+
+Use `useFormHistory` for any state — not just forms. Form-level undo/redo on the entire state object.
+
+```tsx
+import { useFormHistory } from "react-form-rewind";
+
+function Counter() {
+  const { state, setState, undo, redo, canUndo, canRedo } = useFormHistory(
+    { count: 0 },
+    { keyboard: true }
+  );
+
+  return (
+    <div>
+      <button onClick={() => setState({ count: state.count - 1 })} disabled={!canUndo}>-</button>
+      <span>{state.count}</span>
+      <button onClick={() => setState({ count: state.count + 1 })} disabled={!canRedo}>+</button>
+    </div>
+  );
+}
+```
+
+**Ctrl+Z** reverts the entire state. **Ctrl+Shift+Z** redoes.
 
 ---
 
-## API Reference
+## Field-Level Undo/Redo
+
+The key feature. When using `<FormRewind>` with `keyboard`, **Ctrl+Z undoes only the field your cursor is in**. Other fields stay untouched.
+
+```
+Name: [John|]     <-- cursor here, Ctrl+Z reverts just Name
+Email: [john@test.com]  <-- stays exactly as-is
+Age: [25]              <-- untouched
+```
+
+Each field maintains its own independent history stack:
+- **Per-field debounce** — typing "hello" fast = one undo step, not five
+- **Per-field redo** — Ctrl+Shift+Z redoes only the focused field
+- **Independent stacks** — undoing Name doesn't affect Email's history
+
+---
+
+## Field Components
+
+All field components auto-register with the `<FormRewind>` context, track their own history, validate on blur, and display errors.
+
+### TextField
+
+```tsx
+<TextField name="name" label="Name" placeholder="John" rules={{ required: true }} />
+```
+
+Props: `name`, `label?`, `rules?`, `placeholder?`, `className?`, `style?`, plus all native `<input>` props.
+
+### NumberField
+
+```tsx
+<NumberField name="age" label="Age" rules={{ min: 0, max: 150 }} />
+```
+
+Same as TextField but type="number". Value is stored as a number.
+
+### CheckboxField
+
+```tsx
+<CheckboxField name="agree" label="I agree to terms" rules={{ required: true }} />
+```
+
+Boolean field. `required` means the checkbox must be checked.
+
+### SelectField
+
+```tsx
+<SelectField
+  name="country"
+  label="Country"
+  placeholder="Select..."
+  options={[
+    { value: "us", label: "United States" },
+    { value: "uk", label: "United Kingdom" },
+  ]}
+  rules={{ required: true }}
+/>
+```
+
+### TextareaField
+
+```tsx
+<TextareaField name="bio" label="Bio" rows={4} rules={{ maxLength: 500 }} />
+```
+
+---
+
+## Validation
+
+Pass a `rules` prop to any field component. Validation runs on blur (when the field is touched) and on form submit.
+
+### Built-in Rules
+
+| Rule | Type | Description |
+|------|------|-------------|
+| `required` | `boolean \| string` | Field must be non-empty. Pass a string for custom error message. |
+| `pattern` | `RegExp \| { value: RegExp, message: string }` | Must match regex |
+| `minLength` | `number \| { value: number, message: string }` | String min length |
+| `maxLength` | `number \| { value: number, message: string }` | String max length |
+| `min` | `number \| { value: number, message: string }` | Number minimum |
+| `max` | `number \| { value: number, message: string }` | Number maximum |
+| `validate` | `(value) => string \| null` | Custom validator. Return error message or null. |
+
+### Examples
+
+```tsx
+// Required with custom message
+<TextField name="name" rules={{ required: "Name is required" }} />
+
+// Email pattern with custom message
+<TextField name="email" rules={{ pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "Bad email" } }} />
+
+// Number range
+<NumberField name="score" rules={{ min: 0, max: 100 }} />
+
+// Custom validator
+<TextField
+  name="username"
+  rules={{
+    validate: (val) => (val as string).length < 3 ? "Too short" : null,
+  }}
+/>
+```
+
+---
+
+## FormRewind Provider
+
+The `<FormRewind>` component wraps your form and provides context to all field components.
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `initialState` | `Record<string, unknown>` | (required) | Initial form values |
+| `keyboard` | `boolean` | `false` | Enable field-level Ctrl+Z / Ctrl+Shift+Z |
+| `debounceMs` | `number` | `300` | Per-field debounce window |
+| `maxHistory` | `number` | `100` | Max history entries per field |
+| `persist` | `{ key, debounceMs?, version? }` or `false` | `false` | localStorage draft persistence |
+| `onSubmit` | `(state) => void` | — | Called after validation passes |
+| `children` | `ReactNode` | (required) | Form fields |
+
+Renders a `<form>` element with `noValidate`. Handles submit, runs validation, calls `onSubmit` only if all fields pass.
+
+---
+
+## Standalone Hook API
 
 ### `useFormHistory<T>(initialState, options?)`
 
-The core hook that manages a history-backed state stack.
-
-**Returns:**
-
 | Property | Type | Description |
 |----------|------|-------------|
-| `state` | `T` | Current present state |
-| `setState` | `(value: T \| ((prev: T) => T), label?: string) => void` | Update state (pushes to history) |
+| `state` | `T` | Current state |
+| `setState` | `(value \| updater, label?) => void` | Update state |
 | `undo` | `() => void` | Revert to previous state |
 | `redo` | `() => void` | Re-apply undone state |
 | `canUndo` | `boolean` | Whether undo is available |
 | `canRedo` | `boolean` | Whether redo is available |
 | `clearHistory` | `() => void` | Reset history, keep current state |
 | `clearDraft` | `() => void` | Clear persisted draft from storage |
-| `snapshot` | `(label?: string) => void` | Force-commit current state to history |
+| `snapshot` | `(label?) => void` | Force-commit current state to history |
 | `past` | `HistoryEntry<T>[]` | Past history entries |
 | `future` | `HistoryEntry<T>[]` | Future (undone) entries |
 
-**Options:**
+Options:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `maxHistory` | `number` | `100` | Maximum past entries to retain |
-| `debounceMs` | `number` | `300` | Debounce window for rapid state changes |
-| `persist` | `boolean \| PersistOptions` | `false` | Enable draft persistence |
-| `keyboard` | `boolean` | `false` | Enable Ctrl+Z / Ctrl+Shift+Z keyboard shortcuts |
+| `maxHistory` | `number` | `100` | Max past entries |
+| `debounceMs` | `number` | `300` | Debounce window (0 = no debounce) |
+| `persist` | `boolean \| PersistOptions` | `false` | Draft persistence |
+| `keyboard` | `boolean` | `false` | Ctrl+Z / Ctrl+Shift+Z (form-level) |
 | `onUndo` | `(state: T) => void` | — | Callback after undo |
 | `onRedo` | `(state: T) => void` | — | Callback after redo |
-| `onSnapshot` | `(entry: HistoryEntry<T>) => void` | — | Callback when a snapshot is committed |
-
-### `PersistOptions`
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `key` | `string` | — | `localStorage` key for draft storage |
-| `debounceMs` | `number` | `500` | Debounce for auto-save writes |
-| `version` | `number` | `1` | Schema version (mismatches discard draft) |
+| `onSnapshot` | `(entry) => void` | — | Callback on snapshot |
 
 ---
 
-## Features
+## useFormRewindContext
 
-### Keyboard Shortcuts
+Access form context from outside field components:
 
-Pass `keyboard: true` to enable built-in shortcuts. Press **Ctrl+Z** to undo, **Ctrl+Shift+Z** or **Ctrl+Y** to redo. On macOS, **Ctrl** maps to **Cmd** automatically.
+```tsx
+import { useFormRewindContext } from "react-form-rewind";
 
-### Snapshot Debouncing
+function UndoButton() {
+  const { undoField, fields } = useFormRewindContext();
+  // undoField("name") — undo just the name field
+  // fields.name.canUndo — check if name has undo history
+}
+```
 
-Rapid keystrokes (typing "hello" quickly) are coalesced into a single history entry instead of one per keystroke. The debounce window defaults to 300ms.
+| Property | Type | Description |
+|----------|------|-------------|
+| `state` | `Record<string, unknown>` | Full form state |
+| `setState` | `(name, value) => void` | Set a single field |
+| `errors` | `Record<string, FieldError>` | Current validation errors |
+| `touched` | `Record<string, boolean>` | Which fields have been blurred |
+| `fields` | `Record<string, FieldMeta>` | Per-field metadata (touched, canUndo, canRedo) |
+| `undoField` | `(name) => void` | Undo a specific field |
+| `redoField` | `(name) => void` | Redo a specific field |
+| `setError` | `(name, error) => void` | Manually set a field error |
+| `clearError` | `(name) => void` | Clear a field error |
 
-### Draft Persistence
+---
 
-Enable with `persist: { key: "my-form" }`. Drafts are auto-saved to `localStorage` and restored on mount. Schema versioning prevents stale drafts from hydrating incorrectly.
+## Draft Persistence
+
+Enable with `persist: { key: "my-form" }`. Drafts auto-save to `localStorage` (debounced) and restore on mount.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `key` | `string` | (required) | localStorage key |
+| `debounceMs` | `number` | `500` | Auto-save debounce |
+| `version` | `number` | `1` | Schema version (mismatches discard draft) |
 
 ---
 
 ## Tree-Shaking
 
-`react-form-rewind` uses pure ES module exports with `sideEffects: false` in `package.json`. Bundlers like Webpack, Rollup, and esbuild will only include code you actually import.
+Pure ES module exports with `sideEffects: false`. Only import what you use:
 
 ```ts
-// Only the hook is bundled — no extra code
+// Just the hook — no field components bundled
 import { useFormHistory } from "react-form-rewind";
+
+// Just field components — no standalone hook logic
+import { FormRewind, TextField } from "react-form-rewind";
 ```
 
 ---
 
 ## TypeScript
 
-Full type definitions are included. All generics are inferred from your initial state:
+Full generics, all types exported. State is inferred from `initialState`:
 
 ```ts
 const { state } = useFormHistory({ count: 0 });
 // state is typed as { count: number }
 ```
-
----
-
-## Browser Support
-
-- Chrome 80+
-- Firefox 78+
-- Safari 14+
-- Edge 80+
-
-Requires `React 18+` and native `Array`, `localStorage`, and `addEventListener` APIs.
 
 ---
 

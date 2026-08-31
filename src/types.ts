@@ -40,6 +40,13 @@ export interface FieldMeta {
   name: string;
   rules?: FieldRules;
   touched: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
+export interface FieldHistory {
+  past: unknown[];
+  future: unknown[];
 }
 
 export interface FormRewindContextValue {
@@ -53,6 +60,8 @@ export interface FormRewindContextValue {
   fields: Record<string, FieldMeta>;
   registerField: (name: string, rules?: FieldRules) => void;
   unregisterField: (name: string) => void;
+  undoField: (name: string) => void;
+  redoField: (name: string) => void;
 }
 
 export type { FieldRules, FieldError } from "./validation";
