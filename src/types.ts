@@ -1,3 +1,5 @@
+import type { FieldRules, FieldError } from "./validation";
+
 export interface HistoryEntry<T> {
   state: T;
   timestamp: number;
@@ -33,3 +35,24 @@ export interface UseFormHistoryReturn<T> {
   past: HistoryEntry<T>[];
   future: HistoryEntry<T>[];
 }
+
+export interface FieldMeta {
+  name: string;
+  rules?: FieldRules;
+  touched: boolean;
+}
+
+export interface FormRewindContextValue {
+  state: Record<string, unknown>;
+  setState: (name: string, value: unknown) => void;
+  errors: Record<string, FieldError>;
+  setError: (name: string, error: FieldError) => void;
+  clearError: (name: string) => void;
+  touched: Record<string, boolean>;
+  touch: (name: string) => void;
+  fields: Record<string, FieldMeta>;
+  registerField: (name: string, rules?: FieldRules) => void;
+  unregisterField: (name: string) => void;
+}
+
+export type { FieldRules, FieldError } from "./validation";
