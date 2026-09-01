@@ -218,8 +218,8 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
   }, [pushFieldPast, schedulePersist, store]);
 
   const getValue = useCallback((name: string) => {
-    return getNestedValue(stateRef.current, name);
-  }, []);
+    return getNestedValue(store.getState(), name);
+  }, [store]);
 
   // ---- Undo / Redo a single field ----
   const undoField = useCallback((name: string) => {
@@ -265,16 +265,17 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
     return h ? h.future.length > 0 : false;
   }, []);
 
-  // ---- Watch (simple getter, reads current state) ----
+  // ---- Watch (reads from store — the source of truth) ----
   const watch = useCallback((fields?: string | string[]): unknown | Record<string, unknown> => {
-    if (!fields) return stateRef.current;
-    if (typeof fields === "string") return getNestedValue(stateRef.current, fields);
+    const current = store.getState();
+    if (!fields) return current;
+    if (typeof fields === "string") return getNestedValue(current, fields);
     const result: Record<string, unknown> = {};
     for (const f of fields) {
-      result[f] = getNestedValue(stateRef.current, f);
+      result[f] = getNestedValue(current, f);
     }
     return result;
-  }, []);
+  }, [store]);
 
   // ---- Register field ----
   const register = useCallback((name: string, rules?: FieldRules) => {
@@ -311,11 +312,11 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
   // ---- Get field state ----
   const getFieldState = useCallback((name: string) => {
     return {
-      value: getNestedValue(stateRef.current, name),
+      value: getNestedValue(store.getState(), name),
       error: errorsRef.current[name],
       touched: !!touchedRef.current[name],
     };
-  }, []);
+  }, [store]);
 
   // ---- Clear errors ----
   const clearErrors = useCallback((name?: string) => {
@@ -337,6 +338,7 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
 
   // ---- Trigger validation ----
   const trigger = useCallback(async (fields?: string | string[]): Promise<boolean> => {
+    const currentState = store.getState();
     const fieldsToValidate = fields
       ? (typeof fields === "string" ? [fields] : fields)
       : Object.keys(rulesRef.current);
@@ -346,7 +348,7 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
 
     for (const name of fieldsToValidate) {
       if (!rulesRef.current[name]) continue;
-      const error = await validateField(stateRef.current[name], rulesRef.current[name]);
+      const error = await validateField(currentState[name], rulesRef.current[name]);
       if (error) {
         newErrors[name] = error;
         allValid = false;
@@ -356,7 +358,7 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
     // Merge with existing errors
     setErrors((prev) => ({ ...prev, ...newErrors }));
     return allValid;
-  }, []);
+  }, [store]);
 
   // ---- Handle submit ----
   const handleSubmit = useCallback(
@@ -364,19 +366,22 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
       return async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
 
+        // Read latest state from store (source of truth)
+        const currentState = store.getState();
+
         // Touch all fields
         const allTouched: Record<string, boolean> = {};
         for (const name in rulesRef.current) allTouched[name] = true;
         setTouched(allTouched);
 
         // Validate all (async)
-        const allErrors = await validateAll(stateRef.current, rulesRef.current);
+        const allErrors = await validateAll(currentState, rulesRef.current);
         setErrors(allErrors);
 
         if (Object.keys(allErrors).length === 0) {
           setIsSubmitting(true);
           try {
-            await onSubmit(stateRef.current as T);
+            await onSubmit(currentState as T);
             setIsSubmitted(true);
             setSubmitCount((c) => c + 1);
           } catch {
@@ -398,7 +403,7 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
         return Object.keys(allErrors).length === 0;
       };
     },
-    [],
+    [store],
   );
 
   // ---- Sync field state (for useFieldArray) ----
@@ -465,12 +470,19 @@ export function useForm<T extends Record<string, unknown> = Record<string, unkno
   }, []);
 
   // ---- Form state flags ----
+  // Subscribe to store to recompute isDirty when field components update store directly
+  const [, forceStoreSync] = useState(0);
+  useEffect(() => {
+    return store.subscribeAll(() => forceStoreSync((v) => v + 1));
+  }, [store]);
+
+  const currentStoreState = store.getState();
   const isDirty = useMemo(() => {
     for (const key in defaultValues) {
-      if (!Object.is(state[key], defaultValues[key])) return true;
+      if (!Object.is(currentStoreState[key], defaultValues[key])) return true;
     }
     return false;
-  }, [state, defaultValues]);
+  }, [currentStoreState, defaultValues]);
 
   const isValid = Object.keys(errors).length === 0;
 
