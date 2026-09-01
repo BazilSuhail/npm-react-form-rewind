@@ -49,19 +49,4 @@ export interface FieldHistory {
   future: unknown[];
 }
 
-export interface FormRewindContextValue {
-  state: Record<string, unknown>;
-  setState: (name: string, value: unknown) => void;
-  errors: Record<string, FieldError>;
-  setError: (name: string, error: FieldError) => void;
-  clearError: (name: string) => void;
-  touched: Record<string, boolean>;
-  touch: (name: string) => void;
-  fields: Record<string, FieldMeta>;
-  registerField: (name: string, rules?: FieldRules) => void;
-  unregisterField: (name: string) => void;
-  undoField: (name: string) => void;
-  redoField: (name: string) => void;
-}
-
-export type { FieldRules, FieldError } from "./validation";
+export type { FieldRules, FieldError };

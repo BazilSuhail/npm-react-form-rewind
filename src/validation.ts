@@ -5,7 +5,7 @@ export interface FieldRules {
   maxLength?: number | { value: number; message: string };
   min?: number | { value: number; message: string };
   max?: number | { value: number; message: string };
-  validate?: (value: unknown) => string | null;
+  validate?: (value: unknown) => string | null | Promise<string | null>;
 }
 
 export interface FieldError {
@@ -20,7 +20,7 @@ function unwrap<T>(rule: T | { value: T; message: string }, fallback: string): {
   return { value: rule as T, message: fallback };
 }
 
-export function validateField(value: unknown, rules: FieldRules): FieldError | null {
+export async function validateField(value: unknown, rules: FieldRules): Promise<FieldError | null> {
   const str = typeof value === "string" ? value : String(value ?? "");
   const num = typeof value === "number" ? value : Number(value);
 
@@ -68,7 +68,7 @@ export function validateField(value: unknown, rules: FieldRules): FieldError | n
   }
 
   if (rules.validate) {
-    const err = rules.validate(value);
+    const err = await rules.validate(value);
     if (err) {
       return { message: err, type: "validate" };
     }
@@ -77,13 +77,13 @@ export function validateField(value: unknown, rules: FieldRules): FieldError | n
   return null;
 }
 
-export function validateAll(
+export async function validateAll(
   state: Record<string, unknown>,
   fieldRules: Record<string, FieldRules>,
-): Record<string, FieldError> {
+): Promise<Record<string, FieldError>> {
   const errors: Record<string, FieldError> = {};
   for (const name in fieldRules) {
-    const error = validateField(state[name], fieldRules[name]);
+    const error = await validateField(state[name], fieldRules[name]);
     if (error) {
       errors[name] = error;
     }

@@ -10,9 +10,9 @@
 [![bundle size](https://img.shields.io/bundlejs/size/react-form-rewind?label=min%2Bgzip)](https://bundlejs.com/?q=react-form-rewind)
 [![github](https://img.shields.io/github/stars/BazilSuhail/npm-react-form-rewind?style=social)](https://github.com/BazilSuhail/npm-react-form-rewind)
 
-Zero-dependency, tree-shakable React state engine with **field-level undo/redo**, per-field history stacks, validation, draft persistence, and keyboard shortcuts.
+Form engine with **field-level undo/redo**, per-field history stacks, async validation, draft persistence, nested paths, field arrays, watch, and keyboard shortcuts.
 
-Two APIs: a standalone hook for full control, or field components for zero-boilerplate forms.
+Lightweight (~12KB ESM), zero dependencies, tree-shakable. Built on a ref-based store with per-field subscriptions -- only changed fields re-render.
 
 ---
 
@@ -24,91 +24,217 @@ npm install react-form-rewind
 
 ---
 
-## Two Ways to Use
-
-### 1. Field Components (recommended for forms)
-
-Zero boilerplate. Field components handle registration, onChange, validation, and per-field undo/redo automatically.
+## Quick Start
 
 ```tsx
-import { FormRewind, TextField, NumberField } from "react-form-rewind";
+import { useForm, FormProvider, TextField } from "react-form-rewind";
 
 function SignupForm() {
+  const form = useForm({
+    defaultValues: { name: "", email: "" },
+    keyboard: true,
+    persist: { key: "signup-draft" },
+  });
+
   return (
-    <FormRewind
-      initialState={{ name: "", email: "", age: 0 }}
-      keyboard
-      persist={{ key: "signup-draft" }}
-      onSubmit={(data) => console.log(data)}
-    >
-      <TextField name="name" label="Name" rules={{ required: true }} />
-      <TextField
-        name="email"
-        label="Email"
-        rules={{
-          required: true,
-          pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "Invalid email" },
-        }}
-      />
-      <NumberField name="age" label="Age" rules={{ min: 18, max: 120 }} />
-      <button type="submit">Submit</button>
-    </FormRewind>
+    <FormProvider {...form}>
+      <form onSubmit={form.handleSubmit((data) => console.log(data))}>
+        <TextField name="name" label="Name" rules={{ required: true }} />
+        <TextField name="email" label="Email" rules={{ required: true }} />
+        <button type="submit">Submit</button>
+      </form>
+    </FormProvider>
   );
 }
 ```
 
 **What happens:**
-- Click into Name, type "John", press **Ctrl+Z** — only Name undoes, Email stays
-- Type in both fields, submit — validation runs, errors show per field
-- Close tab, reopen — draft restored from localStorage
+- Click into Name, type "John", press **Ctrl+Z** -- only Name undoes, Email stays
+- Submit empty form -- validation runs, errors show, first error field auto-focused
+- Close tab, reopen -- draft restored from localStorage
 
-### 2. Standalone Hook (full control)
+---
 
-Use `useFormHistory` for any state — not just forms. Form-level undo/redo on the entire state object.
+## TypeScript (Generic Forms)
+
+Full generic support for type-safe form values:
 
 ```tsx
-import { useFormHistory } from "react-form-rewind";
+interface SignupForm {
+  name: string;
+  email: string;
+  age: number;
+}
 
-function Counter() {
-  const { state, setState, undo, redo, canUndo, canRedo } = useFormHistory(
-    { count: 0 },
-    { keyboard: true }
-  );
+const form = useForm<SignupForm>({
+  defaultValues: { name: "", email: "", age: 0 },
+});
+
+form.setValue("name", "John");   // ✅
+form.setValue("name", 123);      // ❌ Type error
+form.handleSubmit((data) => {
+  data.name;   // string
+  data.age;    // number
+});
+```
+
+---
+
+## FormProvider & useFormContext
+
+Wrap your form with `FormProvider` so field components connect automatically -- no prop drilling:
+
+```tsx
+import { useForm, FormProvider, TextField, SelectField } from "react-form-rewind";
+
+function ProfileForm() {
+  const form = useForm({ defaultValues: { name: "", role: "" } });
 
   return (
-    <div>
-      <button onClick={() => setState({ count: state.count - 1 })} disabled={!canUndo}>-</button>
-      <span>{state.count}</span>
-      <button onClick={() => setState({ count: state.count + 1 })} disabled={!canRedo}>+</button>
-    </div>
+    <FormProvider {...form}>
+      <form onSubmit={form.handleSubmit(save)}>
+        <TextField name="name" label="Name" rules={{ required: true }} />
+        <SelectField
+          name="role"
+          label="Role"
+          options={[
+            { value: "admin", label: "Admin" },
+            { value: "user", label: "User" },
+          ]}
+        />
+        <button type="submit">Save</button>
+      </form>
+    </FormProvider>
   );
 }
 ```
 
-**Ctrl+Z** reverts the entire state. **Ctrl+Shift+Z** redoes.
+`useFormContext` gives access inside any nested component:
+
+```tsx
+function Footer() {
+  const { formState, reset } = useFormContext();
+  return (
+    <footer>
+      {formState.isDirty && <span>Unsaved changes</span>}
+      <button onClick={() => reset()}>Discard</button>
+    </footer>
+  );
+}
+```
+
+---
+
+## useForm API
+
+The main hook. One call gives you everything.
+
+```tsx
+const form = useForm<FormData>({
+  defaultValues: { name: "", email: "", tags: [] },
+  persist: { key: "my-form" },
+  keyboard: true,
+});
+```
+
+### Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `defaultValues` | `T` (required) | -- | Initial form values |
+| `persist` | `{ key: string; version?: number }` or `false` | `false` | Auto-save to localStorage |
+| `keyboard` | `boolean` | `false` | Enable field-level Ctrl+Z / Ctrl+Shift+Z |
+
+### Returns
+
+| Method | Description |
+|--------|-------------|
+| `register(name, rules?)` | Register a field. Returns `{ name, value, onChange, onBlur, ref }` to spread on native inputs. |
+| `setValue(name, value)` | Set a field value. Supports nested paths like `"user.email"`. |
+| `getValue(name)` | Get a field value. Supports nested paths. |
+| `watch()` | Get full form state snapshot. |
+| `watch("name")` | Get a single field value. |
+| `watch(["name", "email"])` | Get multiple field values. |
+| `reset(values?)` | Reset form to default or new values. Clears all history and errors. |
+| `trigger()` | Validate all registered fields. Returns `Promise<boolean>`. |
+| `trigger("email")` | Validate a specific field. |
+| `trigger(["name", "email"])` | Validate multiple fields. |
+| `clearErrors()` | Clear all errors. |
+| `clearErrors("name")` | Clear a specific field error. |
+| `setError("name", { message, type })` | Set a field error manually (for server-side errors). |
+| `handleSubmit(onSubmit)` | Returns a submit handler that validates first. Auto-focuses first error field. |
+| `getFieldState(name)` | Returns `{ value, error, touched }` for a field. |
+| `undoField(name)` | Undo a specific field. |
+| `redoField(name)` | Redo a specific field. |
+| `canUndoField(name)` | Check if a field has undo history. |
+| `canRedoField(name)` | Check if a field has redo history. |
+
+### formState
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `errors` | `Record<string, FieldError>` | Current validation errors |
+| `touched` | `Record<string, boolean>` | Which fields have been blurred |
+| `isDirty` | `boolean` | `true` if any field differs from `defaultValues` |
+| `isValid` | `boolean` | `true` if no validation errors |
+| `isSubmitting` | `boolean` | `true` while async `onSubmit` is running |
+| `isSubmitted` | `boolean` | `true` after `onSubmit` completes successfully |
+| `submitCount` | `number` | Number of submission attempts |
 
 ---
 
 ## Field-Level Undo/Redo
 
-The key feature. When using `<FormRewind>` with `keyboard`, **Ctrl+Z undoes only the field your cursor is in**. Other fields stay untouched.
+The key feature. With `keyboard: true`, **Ctrl+Z undoes only the field your cursor is in**. Other fields stay untouched.
 
 ```
-Name: [John|]     <-- cursor here, Ctrl+Z reverts just Name
+Name: [John|]        <-- cursor here, Ctrl+Z reverts just Name
 Email: [john@test.com]  <-- stays exactly as-is
 Age: [25]              <-- untouched
 ```
 
 Each field maintains its own independent history stack:
-- **Per-field debounce** — typing "hello" fast = one undo step, not five
-- **Per-field redo** — Ctrl+Shift+Z redoes only the focused field
-- **Independent stacks** — undoing Name doesn't affect Email's history
+- **Per-field debounce** -- typing "hello" fast = one undo step, not five
+- **Per-field redo** -- Ctrl+Shift+Z redoes only the focused field
+- **Independent stacks** -- undoing Name does not affect Email history
+
+---
+
+## register()
+
+```tsx
+const { register } = useForm({ defaultValues: { name: "" } });
+
+// Spread onto a native input
+<input {...register("name", { required: true })} />
+```
+
+`register(name, rules?)` returns:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `name` | `string` | Field name |
+| `value` | `string \| number \| boolean` | Current value |
+| `onChange` | `(e) => void` | Change handler |
+| `onBlur` | `() => void` | Blur handler (marks field as touched) |
+| `ref` | `(el) => void` | Ref callback for keyboard handler support |
 
 ---
 
 ## Field Components
 
-All field components auto-register with the `<FormRewind>` context, track their own history, validate on blur, and display errors.
+Zero-boilerplate field components. Each subscribes to per-field store updates -- only the changed field re-renders. Requires `FormProvider` parent.
+
+All field components accept these styling props:
+
+| Prop | Applies to | Element |
+|------|-----------|---------|
+| `className` | Wrapper | `<div>` / `<fieldset>` |
+| `style` | Wrapper | `<div>` / `<fieldset>` |
+| `inputClassName` | Input | `<input>`, `<select>`, `<textarea>` |
+| `inputStyle` | Input | `<input>`, `<select>`, `<textarea>` |
+| `labelClassName` | Label | `<label>` |
+| `errorClassName` | Error | `<span>` |
 
 ### TextField
 
@@ -116,15 +242,13 @@ All field components auto-register with the `<FormRewind>` context, track their 
 <TextField name="name" label="Name" placeholder="John" rules={{ required: true }} />
 ```
 
-Props: `name`, `label?`, `rules?`, `placeholder?`, `className?`, `style?`, plus all native `<input>` props.
-
 ### NumberField
 
 ```tsx
 <NumberField name="age" label="Age" rules={{ min: 0, max: 150 }} />
 ```
 
-Same as TextField but type="number". Value is stored as a number.
+Value is stored as a number.
 
 ### CheckboxField
 
@@ -133,6 +257,14 @@ Same as TextField but type="number". Value is stored as a number.
 ```
 
 Boolean field. `required` means the checkbox must be checked.
+
+### SwitchField
+
+```tsx
+<SwitchField name="darkMode" label="Dark mode" />
+```
+
+Boolean toggle styled as a switch. Uses `role="switch"` for accessibility.
 
 ### SelectField
 
@@ -149,17 +281,147 @@ Boolean field. `required` means the checkbox must be checked.
 />
 ```
 
+### RadioField
+
+```tsx
+<RadioField
+  name="plan"
+  label="Plan"
+  options={[
+    { value: "free", label: "Free" },
+    { value: "pro", label: "Pro" },
+    { value: "enterprise", label: "Enterprise" },
+  ]}
+  orientation="horizontal"
+  rules={{ required: true }}
+/>
+```
+
+Renders a `<fieldset>` with `<input type="radio">` per option. `orientation` controls layout (`"vertical"` default).
+
 ### TextareaField
 
 ```tsx
 <TextareaField name="bio" label="Bio" rows={4} rules={{ maxLength: 500 }} />
 ```
 
+### Tailwind Example
+
+```tsx
+<TextField
+  name="email"
+  label="Email"
+  className="flex flex-col gap-1.5"
+  labelClassName="text-sm font-bold text-gray-700"
+  inputClassName="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+  errorClassName="text-red-500 text-xs mt-1"
+  rules={{ required: true }}
+/>
+```
+
+---
+
+## Nested Fields (Dot Notation)
+
+Use dot notation for nested objects:
+
+```tsx
+const { register, setValue, getValue } = useForm({
+  defaultValues: { user: { name: "", email: "" }, address: { city: "" } },
+});
+
+<input {...register("user.name")} />
+<input {...register("user.email")} />
+<input {...register("address.city")} />
+
+// Programmatic access
+setValue("user.email", "john@test.com");
+getValue("user.email"); // "john@test.com"
+```
+
+---
+
+## useField (Custom Components)
+
+Build your own field components with full control:
+
+```tsx
+import { useForm, useField } from "react-form-rewind";
+
+function CustomInput({ name, rules }) {
+  const form = useForm({ defaultValues: { [name]: "" } });
+  const { value, error, onChange, onBlur, undo, redo, canUndo, canRedo } = useField({ name, rules }, form);
+
+  return (
+    <div>
+      <input value={value} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+      {error && <span>{error.message}</span>}
+      <button onClick={undo} disabled={!canUndo}>Undo</button>
+      <button onClick={redo} disabled={!canRedo}>Redo</button>
+    </div>
+  );
+}
+```
+
+### useField Returns
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `value` | `unknown` | Current field value |
+| `error` | `FieldError \| undefined` | Validation error if any |
+| `touched` | `boolean` | Whether field has been blurred |
+| `onChange` | `(value) => void` | Set field value |
+| `onBlur` | `() => void` | Mark field as touched |
+| `canUndo` | `boolean` | Whether undo is available |
+| `canRedo` | `boolean` | Whether redo is available |
+| `undo` | `() => void` | Undo this field |
+| `redo` | `() => void` | Redo this field |
+
+---
+
+## useFieldArray
+
+Dynamic field arrays for lists of items:
+
+```tsx
+import { useForm, useFieldArray } from "react-form-rewind";
+
+function TagInput() {
+  const form = useForm({ defaultValues: { tags: [] } });
+  const { fields, append, remove, move } = useFieldArray({ name: "tags" }, form);
+
+  return (
+    <div>
+      {fields.map((tag, i) => (
+        <div key={i}>
+          <span>{tag}</span>
+          <button onClick={() => remove(i)}>x</button>
+        </div>
+      ))}
+      <button onClick={() => append("new tag")}>Add</button>
+    </div>
+  );
+}
+```
+
+### useFieldArray Returns
+
+| Method | Description |
+|--------|-------------|
+| `fields` | `T[]` | Current array values |
+| `append(value)` | Add item to end |
+| `remove(index)` | Remove item at index |
+| `move(from, to)` | Move item from one index to another |
+| `insert(index, value)` | Insert item at index |
+| `update(index, value)` | Replace item at index |
+| `swap(a, b)` | Swap two items |
+| `clear()` | Remove all items |
+
 ---
 
 ## Validation
 
-Pass a `rules` prop to any field component. Validation runs on blur (when the field is touched) and on form submit.
+Pass a `rules` prop to any field or via `register()`. Validation runs on blur (when touched) and on form submit. Supports both sync and async validators.
 
 ### Built-in Rules
 
@@ -171,118 +433,111 @@ Pass a `rules` prop to any field component. Validation runs on blur (when the fi
 | `maxLength` | `number \| { value: number, message: string }` | String max length |
 | `min` | `number \| { value: number, message: string }` | Number minimum |
 | `max` | `number \| { value: number, message: string }` | Number maximum |
-| `validate` | `(value) => string \| null` | Custom validator. Return error message or null. |
+| `validate` | `(value) => string \| null \| Promise<string \| null>` | Custom validator (sync or async). Return error message or null. |
 
-### Examples
+### Sync Examples
 
 ```tsx
 // Required with custom message
-<TextField name="name" rules={{ required: "Name is required" }} />
+<input {...register("name", { required: "Name is required" })} />
 
 // Email pattern with custom message
-<TextField name="email" rules={{ pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "Bad email" } }} />
+<input {...register("email", { pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: "Bad email" } })} />
 
 // Number range
 <NumberField name="score" rules={{ min: 0, max: 100 }} />
 
 // Custom validator
-<TextField
-  name="username"
-  rules={{
-    validate: (val) => (val as string).length < 3 ? "Too short" : null,
-  }}
+<input {...register("username", { validate: (val) => val.length < 3 ? "Too short" : null })} />
+```
+
+### Async Validation
+
+For server-side checks (username availability, email uniqueness, etc.):
+
+```tsx
+<input
+  {...register("username", {
+    required: true,
+    validate: async (val) => {
+      const res = await fetch(`/api/check-username?u=${val}`);
+      const { taken } = await res.json();
+      return taken ? "Username already taken" : null;
+    },
+  })}
 />
 ```
 
----
-
-## FormRewind Provider
-
-The `<FormRewind>` component wraps your form and provides context to all field components.
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `initialState` | `Record<string, unknown>` | (required) | Initial form values |
-| `keyboard` | `boolean` | `false` | Enable field-level Ctrl+Z / Ctrl+Shift+Z |
-| `debounceMs` | `number` | `300` | Per-field debounce window |
-| `maxHistory` | `number` | `100` | Max history entries per field |
-| `persist` | `{ key, debounceMs?, version? }` or `false` | `false` | localStorage draft persistence |
-| `onSubmit` | `(state) => void` | — | Called after validation passes |
-| `children` | `ReactNode` | (required) | Form fields |
-
-Renders a `<form>` element with `noValidate`. Handles submit, runs validation, calls `onSubmit` only if all fields pass.
+Async validators run alongside sync rules. Errors appear after the promise resolves. Works with `trigger()`, `handleSubmit`, and on-change validation.
 
 ---
 
-## Standalone Hook API
+## handleSubmit
 
-### `useFormHistory<T>(initialState, options?)`
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `state` | `T` | Current state |
-| `setState` | `(value \| updater, label?) => void` | Update state |
-| `undo` | `() => void` | Revert to previous state |
-| `redo` | `() => void` | Re-apply undone state |
-| `canUndo` | `boolean` | Whether undo is available |
-| `canRedo` | `boolean` | Whether redo is available |
-| `clearHistory` | `() => void` | Reset history, keep current state |
-| `clearDraft` | `() => void` | Clear persisted draft from storage |
-| `snapshot` | `(label?) => void` | Force-commit current state to history |
-| `past` | `HistoryEntry<T>[]` | Past history entries |
-| `future` | `HistoryEntry<T>[]` | Future (undone) entries |
-
-Options:
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `maxHistory` | `number` | `100` | Max past entries |
-| `debounceMs` | `number` | `300` | Debounce window (0 = no debounce) |
-| `persist` | `boolean \| PersistOptions` | `false` | Draft persistence |
-| `keyboard` | `boolean` | `false` | Ctrl+Z / Ctrl+Shift+Z (form-level) |
-| `onUndo` | `(state: T) => void` | — | Callback after undo |
-| `onRedo` | `(state: T) => void` | — | Callback after redo |
-| `onSnapshot` | `(entry) => void` | — | Callback on snapshot |
-
----
-
-## useFormRewindContext
-
-Access form context from outside field components:
+Validates all fields (sync and async) and calls your callback only if valid. Auto-focuses the first error field. Manages `isSubmitting` / `isSubmitted` / `submitCount` automatically.
 
 ```tsx
-import { useFormRewindContext } from "react-form-rewind";
+const { handleSubmit, formState: { isSubmitting } } = useForm({ defaultValues: { name: "", email: "" } });
 
-function UndoButton() {
-  const { undoField, fields } = useFormRewindContext();
-  // undoField("name") — undo just the name field
-  // fields.name.canUndo — check if name has undo history
+<form onSubmit={handleSubmit((data) => {
+  // data is fully validated
+  // only called if isValid === true
+})}>
+  <button disabled={isSubmitting}>
+    {isSubmitting ? "Submitting..." : "Submit"}
+  </button>
+</form>
+```
+
+### Server-Side Error Handling
+
+Use `setError` to map API errors back onto fields after submission:
+
+```tsx
+const { handleSubmit, setError, formState: { isSubmitting } } = useForm({
+  defaultValues: { email: "", password: "" },
+});
+
+async function onSubmit(data) {
+  const res = await fetch("/api/login", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  const result = await res.json();
+
+  if (!res.ok) {
+    // Map server errors to specific fields
+    if (result.field === "email") {
+      setError("email", { message: result.message, type: "server" });
+    } else {
+      setError("password", { message: result.message, type: "server" });
+    }
+  }
 }
 ```
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `state` | `Record<string, unknown>` | Full form state |
-| `setState` | `(name, value) => void` | Set a single field |
-| `errors` | `Record<string, FieldError>` | Current validation errors |
-| `touched` | `Record<string, boolean>` | Which fields have been blurred |
-| `fields` | `Record<string, FieldMeta>` | Per-field metadata (touched, canUndo, canRedo) |
-| `undoField` | `(name) => void` | Undo a specific field |
-| `redoField` | `(name) => void` | Redo a specific field |
-| `setError` | `(name, error) => void` | Manually set a field error |
-| `clearError` | `(name) => void` | Clear a field error |
+Errors set via `setError` appear alongside validation errors and are cleared when the field changes or `clearErrors` is called.
 
 ---
 
 ## Draft Persistence
 
-Enable with `persist: { key: "my-form" }`. Drafts auto-save to `localStorage` (debounced) and restore on mount.
+Enable with `persist: { key: "my-form" }`. Drafts auto-save to localStorage (debounced) and restore on mount.
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `key` | `string` | (required) | localStorage key |
-| `debounceMs` | `number` | `500` | Auto-save debounce |
 | `version` | `number` | `1` | Schema version (mismatches discard draft) |
+
+```tsx
+const form = useForm({
+  defaultValues: { name: "", email: "" },
+  persist: { key: "signup-draft", version: 1 },
+});
+
+// Later: reset to clear persisted draft
+form.reset();
+```
 
 ---
 
@@ -291,22 +546,14 @@ Enable with `persist: { key: "my-form" }`. Drafts auto-save to `localStorage` (d
 Pure ES module exports with `sideEffects: false`. Only import what you use:
 
 ```ts
-// Just the hook — no field components bundled
-import { useFormHistory } from "react-form-rewind";
+// Just useForm -- no field components bundled
+import { useForm } from "react-form-rewind";
 
-// Just field components — no standalone hook logic
-import { FormRewind, TextField } from "react-form-rewind";
-```
+// Just field components
+import { TextField, NumberField } from "react-form-rewind";
 
----
-
-## TypeScript
-
-Full generics, all types exported. State is inferred from `initialState`:
-
-```ts
-const { state } = useFormHistory({ count: 0 });
-// state is typed as { count: number }
+// useFieldArray only
+import { useFieldArray } from "react-form-rewind";
 ```
 
 ---
